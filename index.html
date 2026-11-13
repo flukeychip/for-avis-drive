@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>A message for you</title>
+<style>
+  :root { --bg: #2f6f4f; --fg: #ffffff; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #1f4a35; --fg: #f1f5f2; } }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+               font: 17px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  #play { position: fixed; inset: 0; width: 100%; border: 0; background: transparent; color: inherit; font: inherit;
+          display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px 16px 140px; cursor: pointer; }
+  .icon { font-size: 7rem; line-height: 1; }
+  .big { font-size: 2.2rem; font-weight: 700; margin-top: 16px; text-align: center; }
+  .small { font-size: 1rem; opacity: .85; margin-top: 10px; text-align: center; }
+  .bar { position: fixed; left: 16px; right: 16px; bottom: 32px; z-index: 2; }
+  .skips { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+  .skips button { flex: 1; font: inherit; font-size: 1.1rem; padding: 14px 0; border-radius: 12px; color: inherit;
+                  background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.35); cursor: pointer; }
+  input[type=range] { width: 100%; accent-color: #fff; }
+  .time { display: flex; justify-content: space-between; font-size: .9rem; opacity: .85; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<audio id="a" src="speech.mp3" preload="metadata"></audio>
+
+<button id="play" aria-label="Play or pause">
+  <div class="icon" id="icon">▶</div>
+  <div class="big" id="big">Tap anywhere to listen</div>
+  <div class="small" id="small">You've got a message</div>
+</button>
+
+<div class="bar">
+  <div class="skips">
+    <button id="back">↺ 15s</button>
+    <button id="fwd">30s ↻</button>
+  </div>
+  <input id="seek" type="range" min="0" max="100" step="1" value="0" aria-label="Position">
+  <div class="time"><span id="cur">0:00</span><span id="dur">–:––</span></div>
+</div>
+
+<script>
+(() => {
+  const a = document.getElementById('a'), $ = id => document.getElementById(id);
+  const fmt = s => { s = Math.max(0, Math.floor(s || 0)); const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, x = String(s % 60).padStart(2, '0');
+                     return h ? `${h}:${String(m).padStart(2, '0')}:${x}` : `${m}:${x}`; };
+  const KEY = 'speech-pos';
+  const save = () => { try { localStorage.setItem(KEY, String(a.currentTime)); } catch (_) {} };
+  let saved = 0; try { saved = parseFloat(localStorage.getItem(KEY)) || 0; } catch (_) {}
+
+  function ui() {
+    const playing = !a.paused && !a.ended;
+    $('icon').textContent = a.ended ? '↻' : playing ? '❚❚' : '▶';
+    $('big').textContent = a.ended ? 'Done' : playing ? 'Playing…' : (a.currentTime > 1 ? 'Paused' : 'Tap anywhere to listen');
+    $('small').textContent = a.ended ? 'Tap to hear it again' : playing ? 'Tap to pause'
+                           : (a.currentTime > 1 ? 'Tap to keep going' : "You've got a message");
+  }
+  a.addEventListener('loadedmetadata', () => {
+    $('dur').textContent = fmt(a.duration); $('seek').max = Math.floor(a.duration);
+    if (saved > 5 && saved < a.duration - 5) { a.currentTime = saved; $('small').textContent = 'Picks up where you left off'; }
+  });
+  a.addEventListener('timeupdate', () => {
+    $('cur').textContent = fmt(a.currentTime);
+    if (!seeking) $('seek').value = Math.floor(a.currentTime);
+    if (Math.floor(a.currentTime) % 5 === 0) save();
+  });
+  ['play', 'pause', 'ended'].forEach(e => a.addEventListener(e, () => { ui(); save(); }));
+  a.addEventListener('ended', () => { try { localStorage.removeItem(KEY); } catch (_) {} });
+  a.addEventListener('waiting', () => { $('small').textContent = 'Loading…'; });
+  a.addEventListener('playing', ui);
+
+  $('play').onclick = () => { if (a.ended) a.currentTime = 0; a.paused ? a.play().catch(() => {}) : a.pause(); };
+  $('back').onclick = () => { a.currentTime = Math.max(0, a.currentTime - 15); };
+  $('fwd').onclick = () => { a.currentTime = Math.min(a.duration || 0, a.currentTime + 30); };
+  let seeking = false;
+  $('seek').oninput = () => { seeking = true; $('cur').textContent = fmt(+$('seek').value); };
+  $('seek').onchange = () => { a.currentTime = +$('seek').value; seeking = false; };
+
+  // Lock screen / car controls
+  if ('mediaSession' in navigator) {
+    navigator.mediaSession.metadata = new MediaMetadata({ title: 'A message for you', artist: 'Read aloud' });
+    navigator.mediaSession.setActionHandler('play', () => a.play());
+    navigator.mediaSession.setActionHandler('pause', () => a.pause());
+    navigator.mediaSession.setActionHandler('seekbackward', () => $('back').onclick());
+    navigator.mediaSession.setActionHandler('seekforward', () => $('fwd').onclick());
+  }
+})();
+</script>
+</body>
+</html>
